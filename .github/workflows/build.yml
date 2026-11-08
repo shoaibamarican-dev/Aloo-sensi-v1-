@@ -7,84 +7,94 @@ on:
       - main
       - master
 
+permissions:
+  contents: read
+
 jobs:
   build:
-    name: Build Aloo Sensi v1 APK
+    name: Aloo Sensi v1 APK
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout source
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up Java 17
+      - name: Set Up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.7'
+      - name: Extract Project ZIP If Present
+        shell: bash
+        run: |
+          set -e
+          mkdir -p extracted
 
-      - name: Find Android project
+          while IFS= read -r -d '' file; do
+            echo "Extracting: $file"
+            unzip -o "$file" -d extracted
+          done < <(find . -maxdepth 5 -type f -iname "*.zip" -not -path "./extracted/*" -not -path "./.git/*" -print0)
+
+          cp -a extracted/. . 2>/dev/null || true
+
+      - name: Locate Android Project
         shell: bash
         run: |
           set -e
 
-          SETTINGS=$(find . -name "settings.gradle" -not -path "*/build/*" | head -n 1)
+          echo "Searching Android project..."
+
+          SETTINGS=$(find . -type f -name "settings.gradle" -not -path "*/.git/*" | head -n 1)
 
           if [ -z "$SETTINGS" ]; then
-            echo "ERROR: settings.gradle not found"
-            find . -maxdepth 4 -type f | sort | head -200
+            echo "ERROR: settings.gradle not found."
+            echo "Repository files:"
+            find . -maxdepth 5 -type f | head -200
             exit 1
           fi
 
           PROJECT_DIR=$(dirname "$SETTINGS")
 
-          echo "Android project found at: $PROJECT_DIR"
+          echo "Found project: $PROJECT_DIR"
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-      - name: Check project files
+      - name: Set Up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 34
+        shell: bash
+        run: |
+          sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-34" \
+            "build-tools;34.0.0"
+
+      - name: Set Up Gradle 8.7
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Verify Project
         shell: bash
         run: |
           set -e
-
-          echo "Project: $PROJECT_DIR"
-          echo "Files:"
-          ls -la "$PROJECT_DIR"
-
           test -f "$PROJECT_DIR/settings.gradle"
           test -f "$PROJECT_DIR/build.gradle"
           test -f "$PROJECT_DIR/app/build.gradle"
+          test -f "$PROJECT_DIR/app/src/main/AndroidManifest.xml"
+          echo "Project verification successful."
 
-      - name: Build Aloo Sensi v1
+      - name: Build Aloo Sensi v1 APK
         shell: bash
         run: |
           set -e
-
           cd "$PROJECT_DIR"
-
           gradle --no-daemon --stacktrace assembleDebug
 
-      - name: Find APK
-        shell: bash
-        run: |
-          set -e
-
-          APK=$(find "$PROJECT_DIR" -type f -name "*.apk" | head -n 1)
-
-          if [ -z "$APK" ]; then
-            echo "ERROR: APK was not generated"
-            exit 1
-          fi
-
-          echo "APK found: $APK"
-          echo "APK_PATH=$APK" >> "$GITHUB_ENV"
-
-      - name: Upload Aloo Sensi v1 APK
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Aloo-Sensi-v1-debug
-          path: ${{ env.APK_PATH }}
+          name: Aloo-Sensi-v1-APK
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
