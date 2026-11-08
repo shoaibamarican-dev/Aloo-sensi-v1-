@@ -22,30 +22,24 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Prepare Android SDK
-        shell: bash
+      - name: Set up Gradle 8.7
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Check Android SDK
         run: |
-          set -e
-          yes | sdkmanager --licenses >/dev/null 2>&1 || true
-          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          ls -la "$ANDROID_HOME/platforms" || true
+          ls -la "$ANDROID_HOME/build-tools" || true
 
-      - name: Make Gradle executable
-        working-directory: AlooSensiPro
-        run: chmod +x gradlew
-
-      - name: Check Android project
+      - name: Build Aloo Sensi v1
         working-directory: AlooSensiPro
         run: |
-          test -f settings.gradle
-          test -f build.gradle
-          test -f app/build.gradle
-          test -x gradlew
+          gradle --no-daemon --stacktrace assembleDebug
 
-      - name: Build Debug APK
-        working-directory: AlooSensiPro
-        run: ./gradlew --no-daemon --stacktrace assembleDebug
-
-      - name: Upload APK
+      - name: Upload Aloo Sensi v1 APK
         uses: actions/upload-artifact@v4
         with:
           name: Aloo-Sensi-v1-debug
